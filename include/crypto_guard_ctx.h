@@ -5,10 +5,10 @@
 
 namespace CryptoGuard {
 
-class CryptoGuardCtx {
+class CryptoGuardCtx final {
 public:
-    CryptoGuardCtx() {}
-    ~CryptoGuardCtx() {}
+    CryptoGuardCtx();
+    ~CryptoGuardCtx();
 
     CryptoGuardCtx(const CryptoGuardCtx &) = delete;
     CryptoGuardCtx &operator=(const CryptoGuardCtx &) = delete;
