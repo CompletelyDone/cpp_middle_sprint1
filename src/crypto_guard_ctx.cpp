@@ -9,15 +9,17 @@
 #include <string>
 #include <vector>
 
+namespace CryptoGuard {
+
 namespace {
+enum class CryptMode { Decrypt = 0, Encrypt = 1 };
+
 std::string ErrorToString() {
     char buf[256];
     ERR_error_string_n(ERR_get_error(), buf, sizeof(buf));
     return std::string(buf);
 }
 }  // namespace
-
-namespace CryptoGuard {
 
 struct AesCipherParams {
     static const size_t KEY_SIZE = 32;             // AES-256 key size
@@ -41,12 +43,12 @@ struct CryptoGuardCtx::Impl {
     Impl() { OpenSSL_add_all_algorithms(); };
     ~Impl() { EVP_cleanup(); }
 
-    void EncryptFile(std::iostream &inStream, std::iostream &outStream, std::string_view password) {
+    void ProcessFile(std::iostream &inStream, std::iostream &outStream, std::string_view password, CryptMode mode) {
         if (!inStream || !outStream)
             throw std::runtime_error("Invalid stream");
 
         auto params = CreateChiperParamsFromPassword(password);
-        params.encrypt = 1;
+        params.encrypt = static_cast<int>(mode);
 
         CipherCtxUPtr ctx(EVP_CIPHER_CTX_new());
         if (!ctx) {
@@ -58,7 +60,8 @@ struct CryptoGuardCtx::Impl {
             throw std::runtime_error(std::string("ctx init failed. ") + ErrorToString());
         }
 
-        const std::size_t sizeOfBuffer = 16;
+        const std::size_t sizeOfBuffer =
+            4096;  // Поменял до стандартного размера страницы виртуальной памяти, который ОС обычно читает
         std::vector<unsigned char> inBuf(sizeOfBuffer);
         std::vector<unsigned char> outBuf(sizeOfBuffer + EVP_MAX_BLOCK_LENGTH);
         int outLen = 0;
@@ -68,7 +71,7 @@ struct CryptoGuardCtx::Impl {
             auto readBytes = inStream.gcount();
 
             if (inStream.bad() || (inStream.fail() && !inStream.eof())) {
-                throw std::runtime_error("stream looser");
+                throw std::runtime_error("input stream failed");
             }
 
             if (readBytes > 0) {
@@ -95,8 +98,14 @@ struct CryptoGuardCtx::Impl {
         if (!outStream)
             throw std::runtime_error("output stream failed");
     }
-    void DecryptFile(std::iostream &inStream, std::iostream &outStream, std::string_view password) {}
-    std::string CalculateChecksum(std::iostream &inStream);
+
+    void EncryptFile(std::iostream &inStream, std::iostream &outStream, std::string_view password) {
+        ProcessFile(inStream, outStream, password, CryptMode::Encrypt);
+    }
+    void DecryptFile(std::iostream &inStream, std::iostream &outStream, std::string_view password) {
+        ProcessFile(inStream, outStream, password, CryptMode::Decrypt);
+    }
+    std::string CalculateChecksum(std::iostream &inStream) {}
 
     AesCipherParams CreateChiperParamsFromPassword(std::string_view password) {
         AesCipherParams params;
