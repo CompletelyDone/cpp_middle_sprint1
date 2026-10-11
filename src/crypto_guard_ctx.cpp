@@ -1,10 +1,12 @@
 #include "crypto_guard_ctx.h"
 #include <array>
 #include <cstddef>
+#include <iomanip>
 #include <iostream>
 #include <memory>
 #include <openssl/err.h>
 #include <openssl/evp.h>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -38,7 +40,17 @@ struct CryptoGuardCtx::Impl {
                 EVP_CIPHER_CTX_free(ctx);
         }
     };
+    struct EVPMDCtxDeleter {
+        void operator()(EVP_MD_CTX *ctx) const {
+            if (ctx) {
+                EVP_MD_CTX_free(ctx);
+            }
+        }
+    };
     using CipherCtxUPtr = std::unique_ptr<EVP_CIPHER_CTX, EVPCtxDeleter>;
+    using MDCtxUPtr = std::unique_ptr<EVP_MD_CTX, EVPMDCtxDeleter>;
+    // хотелось бы конечно через лямбду
+    // using MDCtxUPtr = std::unique_ptr<EVP_MD_CTX, decltype([](EVP_MD_CTX *ctx) { EVP_MD_CTX_free(ctx); })>;
 
     Impl() { OpenSSL_add_all_algorithms(); };
     ~Impl() { EVP_cleanup(); }
@@ -98,14 +110,56 @@ struct CryptoGuardCtx::Impl {
         if (!outStream)
             throw std::runtime_error("output stream failed");
     }
-
     void EncryptFile(std::iostream &inStream, std::iostream &outStream, std::string_view password) {
         ProcessFile(inStream, outStream, password, CryptMode::Encrypt);
     }
     void DecryptFile(std::iostream &inStream, std::iostream &outStream, std::string_view password) {
         ProcessFile(inStream, outStream, password, CryptMode::Decrypt);
     }
-    std::string CalculateChecksum(std::iostream &inStream) {}
+    std::string CalculateChecksum(std::iostream &inStream) {
+        if (!inStream)
+            throw std::runtime_error("Invalid stream");
+
+        MDCtxUPtr ctx(EVP_MD_CTX_new());
+        if (!ctx)
+            throw std::runtime_error("md ctx not created. " + ErrorToString());
+
+        if (EVP_DigestInit_ex(ctx.get(), EVP_sha256(), nullptr) <= 0)
+            throw std::runtime_error(std::string("digest init failed. ") + ErrorToString());
+
+        const std::size_t sizeOfBuffer = 4096;
+        std::vector<unsigned char> inBuf(sizeOfBuffer);
+
+        while (true) {
+            inStream.read(reinterpret_cast<char *>(inBuf.data()), sizeOfBuffer);
+            auto readBytes = inStream.gcount();
+
+            if (inStream.bad() || (inStream.fail() && !inStream.eof()))
+                throw std::runtime_error{"Instream broken"};
+
+            if (readBytes > 0) {
+                if (EVP_DigestUpdate(ctx.get(), inBuf.data(), static_cast<std::size_t>(readBytes)) <= 0)
+                    throw std::runtime_error(std::string("DigestUpdate failed") + ErrorToString());
+            }
+
+            if (inStream.eof())
+                break;
+        }
+
+        unsigned char md[EVP_MAX_MD_SIZE];
+        unsigned int s = 0;
+
+        if (EVP_DigestFinal_ex(ctx.get(), md, &s) <= 0) {
+            throw std::runtime_error(std::string("digest final failed. ") + ErrorToString());
+        }
+
+        std::stringstream ss;
+        for (unsigned int i = 0; i < s; ++i) {
+            ss << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(md[i]);
+        }
+
+        return ss.str();
+    }
 
     AesCipherParams CreateChiperParamsFromPassword(std::string_view password) {
         AesCipherParams params;
