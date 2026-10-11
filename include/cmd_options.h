@@ -12,6 +12,7 @@ public:
     ~ProgramOptions();
 
     enum class COMMAND_TYPE {
+        UNKNOWN,
         ENCRYPT,
         DECRYPT,
         CHECKSUM,

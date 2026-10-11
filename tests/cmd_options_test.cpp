@@ -2,7 +2,9 @@
 #include <filesystem>
 #include <fstream>
 #include <gtest/gtest.h>
+#include <stdexcept>
 #include <string>
+#include <thread>
 
 namespace gtest::cmd_options_test {
 using namespace CryptoGuard;
@@ -76,11 +78,9 @@ TEST(ProgramOptions, MissingInputFile) {
     auto [storage, argv] = MakeArgv({"./app", "-i"});
 
     CryptoGuard::ProgramOptions po;
-    po.Parse(static_cast<int>(storage.size()), argv.data());
+    EXPECT_THROW(po.Parse(static_cast<int>(storage.size()), argv.data()), std::runtime_error);
 
-    EXPECT_NE(po.GetCommand(), CryptoGuard::ProgramOptions::COMMAND_TYPE::ENCRYPT);
-    EXPECT_NE(po.GetCommand(), CryptoGuard::ProgramOptions::COMMAND_TYPE::DECRYPT);
-    EXPECT_NE(po.GetCommand(), CryptoGuard::ProgramOptions::COMMAND_TYPE::CHECKSUM);
+    EXPECT_EQ(po.GetCommand(), CryptoGuard::ProgramOptions::COMMAND_TYPE::UNKNOWN);
 
     EXPECT_TRUE(po.GetInputFile().empty());
     EXPECT_TRUE(po.GetOutputFile().empty());
@@ -94,11 +94,12 @@ TEST(ProgramOptions, MissingOutputFile) {
     auto [storage, argv] = MakeArgv({"./app", "-i", inputPath, "--command", "encrypt"});
 
     CryptoGuard::ProgramOptions po;
-    po.Parse(static_cast<int>(storage.size()), argv.data());
+    EXPECT_THROW(po.Parse(static_cast<int>(storage.size()), argv.data()), std::runtime_error);
 
     EXPECT_EQ(po.GetCommand(), CryptoGuard::ProgramOptions::COMMAND_TYPE::ENCRYPT);
     EXPECT_NE(po.GetCommand(), CryptoGuard::ProgramOptions::COMMAND_TYPE::DECRYPT);
     EXPECT_NE(po.GetCommand(), CryptoGuard::ProgramOptions::COMMAND_TYPE::CHECKSUM);
+    EXPECT_NE(po.GetCommand(), CryptoGuard::ProgramOptions::COMMAND_TYPE::UNKNOWN);
 
     EXPECT_FALSE(po.GetInputFile().empty());
     EXPECT_EQ(po.GetInputFile(), inputPath);
@@ -114,11 +115,9 @@ TEST(ProgramOptions, MissingCommand) {
     auto [storage, argv] = MakeArgv({"./app", "-i", inputPath});
 
     CryptoGuard::ProgramOptions po;
-    po.Parse(static_cast<int>(storage.size()), argv.data());
+    EXPECT_THROW(po.Parse(static_cast<int>(storage.size()), argv.data()), std::runtime_error);
 
-    EXPECT_NE(po.GetCommand(), CryptoGuard::ProgramOptions::COMMAND_TYPE::ENCRYPT);
-    EXPECT_NE(po.GetCommand(), CryptoGuard::ProgramOptions::COMMAND_TYPE::DECRYPT);
-    EXPECT_NE(po.GetCommand(), CryptoGuard::ProgramOptions::COMMAND_TYPE::CHECKSUM);
+    EXPECT_EQ(po.GetCommand(), CryptoGuard::ProgramOptions::COMMAND_TYPE::UNKNOWN);
 
     EXPECT_TRUE(po.GetInputFile().empty());
     EXPECT_TRUE(po.GetOutputFile().empty());
@@ -129,7 +128,7 @@ TEST(ProgramOptions, NoInputOptionAtAll) {
     auto [storage, argv] = MakeArgv({"./app", "--command", "checksum"});
 
     CryptoGuard::ProgramOptions po;
-    po.Parse(static_cast<int>(storage.size()), argv.data());
+    EXPECT_THROW(po.Parse(static_cast<int>(storage.size()), argv.data()), std::runtime_error);
 
     EXPECT_TRUE(po.GetInputFile().empty());
     EXPECT_NE(po.GetCommand(), CryptoGuard::ProgramOptions::COMMAND_TYPE::CHECKSUM);

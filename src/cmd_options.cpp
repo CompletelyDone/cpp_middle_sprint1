@@ -3,6 +3,7 @@
 #include <boost/program_options/value_semantic.hpp>
 #include <filesystem>
 #include <iostream>
+#include <stdexcept>
 #include <string>
 
 namespace CryptoGuard {
@@ -10,10 +11,10 @@ namespace CryptoGuard {
 namespace po = boost::program_options;
 namespace fs = std::filesystem;
 
-ProgramOptions::ProgramOptions() : desc_("Allowed options") {
+ProgramOptions::ProgramOptions() : desc_("Allowed options"), command_(COMMAND_TYPE::UNKNOWN) {
     desc_.add_options()("help,h", "show help message")("command,c", po::value<std::string>(),
                                                        "command to proceed: encrypt, decrypt, or checksum")(
-        "input,i", po::value<std::string>()->required(), "input file path")(
+        "input,i", po::value<std::string>(), "input file path")(
         "output,o", po::value<std::string>(), "output file path")("password,p", po::value<std::string>(),
                                                                   "password for encryption/decryption");
 }
@@ -25,23 +26,27 @@ void ProgramOptions::Parse(int argc, char *argv[]) {
     po::variables_map vm;
 
     try {
-        po::store(po::parse_command_line(argc, argv, desc_), vm);
-        po::notify(vm);
-    } catch (const po::error &err) {
-        std::cerr << "Error: " << err.what() << std::endl;
-        std::cout << desc_ << std::endl;
-        return;
-    }
+        po::store(po::parse_command_line(argc, argv, desc_), vm);  // Как я понял тут парсинг
 
-    if (vm.count("help")) {
+        if (vm.count("help")) {
+            desc_.print(std::cout);
+            return;
+        }
+
+        po::notify(vm);  // А тут проверка required из конструктора(при наличии)
+    } catch (const po::error &err) {
         desc_.print(std::cout);
-        return;
+        throw std::runtime_error(std::string("Error: parsing has failed.") + err.what());
     }
 
     if (!vm.count("command")) {
-        std::cerr << "Error: command option is required" << std::endl;
         desc_.print(std::cout);
-        return;
+        throw std::runtime_error("Error: command option is required.");
+    }
+
+    if (!vm.count("input")) {
+        desc_.print(std::cout);
+        throw std::runtime_error("Error: input file is required.");
     }
 
     const auto &cmdStr = vm["command"].as<std::string>();
@@ -49,40 +54,37 @@ void ProgramOptions::Parse(int argc, char *argv[]) {
     if (it != commandMapping_.end()) {
         command_ = it->second;
     } else {
-        std::cerr << "Error: command option is unknown" << std::endl
-                  << "Allowed in { encrypt, decrypt, checksum }" << std::endl;
         desc_.print(std::cout);
-        return;
+        throw std::runtime_error("Error: command option is unknown\n"
+                                 "Allowed in { encrypt, decrypt, checksum }");
     }
 
     const auto &inputPath = vm["input"].as<std::string>();
     if (!fs::exists(inputPath) || !fs::is_regular_file(inputPath)) {
-        std::cerr << "Error: input file does not exist or is not a regular file: " << inputPath << std::endl;
-        std::cout << desc_ << std::endl;
-        return;
+        desc_.print(std::cout);
+        throw std::runtime_error(std::string("Error: input file does not exist or is not a regular file: ") +
+                                 inputPath);
     }
     inputFile_ = inputPath;
 
     if (command_ != COMMAND_TYPE::CHECKSUM) {
 
         if (!vm.count("output") || vm["output"].as<std::string>().empty()) {
-            std::cerr << "Error: output file is required." << std::endl;
-            std::cout << desc_ << std::endl;
-            return;
+            desc_.print(std::cout);
+            throw std::runtime_error("Error: output file is required.");
         }
         if (!vm.count("password") || vm["password"].as<std::string>().empty()) {
-            std::cerr << "Error: password is required for encrypt/decrypt commands." << std::endl;
-            std::cout << desc_ << std::endl;
-            return;
+            desc_.print(std::cout);
+            throw std::runtime_error("Error: password is required for encrypt/decrypt commands.");
         }
 
         const auto &outputPath = vm["output"].as<std::string>();
 
         auto parentDir = fs::path(outputPath).parent_path();
         if (!parentDir.empty() && !fs::exists(parentDir)) {
-            std::cerr << "Error: directory for output file does not exist: " << parentDir << std::endl;
-            std::cout << desc_ << std::endl;
-            return;
+            desc_.print(std::cout);
+            throw std::runtime_error(std::string("Error: directory for output file does not exist: ") +
+                                     parentDir.string());
         }
 
         outputFile_ = outputPath;
