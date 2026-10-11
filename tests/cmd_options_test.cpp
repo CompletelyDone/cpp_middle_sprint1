@@ -4,7 +4,7 @@
 #include <gtest/gtest.h>
 #include <string>
 
-namespace {
+namespace gtest::cmd_options_test {
 using namespace CryptoGuard;
 namespace fs = std::filesystem;
 
@@ -71,7 +71,6 @@ std::pair<std::vector<std::string>, std::vector<char *>> MakeArgv(const std::vec
 
     return {std::move(storage), std::move(argv)};
 }
-}  // namespace
 
 TEST(ProgramOptions, MissingInputFile) {
     auto [storage, argv] = MakeArgv({"./app", "-i"});
@@ -169,3 +168,4 @@ TEST(ProgramOptions, MixedLongAndShortOptions) {
     EXPECT_EQ(po.GetOutputFile(), outputPath);
     EXPECT_EQ(po.GetPassword(), pwd);
 }
+}  // namespace gtest::cmd_options_test
